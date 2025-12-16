@@ -1,1 +1,1 @@
-# cloud-detector
+# Cloud Detector
