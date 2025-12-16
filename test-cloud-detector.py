@@ -31,7 +31,7 @@ VERSION = "1.0"
 CLOUD_INDICATORS = {
     'aws': [r'cloudfront', r'amazonaws', r's3.amazonaws', r'aws-pay', r's3-website'],
     'azure': [r'azureedge', r'windows.net', r'azurewebsites.net', r'blob.core.windows.net'],
-    'gcp': [r'googleapis', r'storage.googleapis.com', r'appspot.com', r'googlesyndication'],
+    'gcp': [r'googleapis', r'storage.googleapis.com', r'appspot.com', r'googlesyndication', r'youtube', r'withgoogle', r'esf'],
     'cloudflare': [r'cloudflare', r'cf-ray', r'cdn-cgi'],
     'fastly': [r'fastly', r'ssl.fastly', r'f.fastly'],
     'akamai': [r'akamai', r'noc.akamai', r'akamaiedge'],
@@ -148,38 +148,43 @@ def ip_owner_info(ip):
 
 def analyze_indicators(http_resps):
     findings = {}
-    combined_text = ''
-    for k,res in http_resps.items():
-        if not res:
+    for host, res in http_resps.items():
+        if not res or not res.get('ok'):
             continue
         headers = res.get('headers') or {}
-        text = (res.get('text') or '')
-        combined_text += ' ' + ' '.join(headers.keys()) + ' ' + text.lower()
+        text = (res.get('text') or '').lower()
+
+        # Combine headers and body for pattern matching
+        combined = ' '.join(k.lower() + ' ' + str(v).lower() for k, v in headers.items()) + ' ' + text
+
         for provider, patterns in CLOUD_INDICATORS.items():
             for p in patterns:
-                if re.search(p, json.dumps(headers).lower()) or re.search(p, text.lower()):
-                    findings.setdefault(provider, []).append({'host': k, 'pattern': p})
+                if re.search(p, combined):
+                    findings.setdefault(provider, []).append(host)
+                    break  # Only count one hit per host per provider
     return findings
 
 def check_bucket_patterns(domain, ip):
     results = []
     parts = domain.split('.')
     candidate_buckets = [domain, parts[0]]
-    candidate_buckets += [f"{parts[0]}-{parts[1]}" if len(parts)>1 else parts[0]]
+    candidate_buckets += [f"{parts[0]}-{parts[1]}" if len(parts) > 1 else parts[0]]
     candidate_buckets = list(dict.fromkeys(candidate_buckets))
+
     for b in candidate_buckets:
         for patt in BUCKET_PATTERNS:
             url = patt.format(bucket=b, region='')
             r = {'url': url, 'ok': False, 'status': None, 'note': ''}
             if requests:
                 try:
-                    h = requests.head(url, timeout=5, allow_redirects=True, headers={'User-Agent':'Secuditor-CloudFootprint/1.0'})
+                    h = requests.head(url, timeout=5, allow_redirects=True,
+                                      headers={'User-Agent':'Secuditor-CloudFootprint/1.0'})
                     r['status'] = h.status_code
-                    if h.status_code in (200,301,302,403,404):
+                    if h.status_code in (200, 301, 302, 403, 404):
                         r['ok'] = True
                         r['note'] = 'reachable'
                 except Exception as e:
-                    r['note'] = str(e)
+                    r['note'] = f'Error: {str(e)}'
             else:
                 r['note'] = 'requests not installed'
             results.append(r)
@@ -187,19 +192,57 @@ def check_bucket_patterns(domain, ip):
 
 def risk_notes(indicators, buckets, ipowner):
     notes = []
+
+    # --- Cloud / CDN indicators ---
     if indicators:
-        for p, hits in indicators.items():
-            notes.append(f'Detected possible presence of {p} services or CDN (examples: {len(hits)} hits)')
+        for provider, hits in indicators.items():
+            # safely extract hosts
+            hosts_list = []
+            for h in hits:
+                if isinstance(h, dict) and 'host' in h:
+                    hosts_list.append(h['host'])
+                elif isinstance(h, str):
+                    hosts_list.append(h)
+            hosts = ', '.join(sorted(set(hosts_list)))
+            notes.append(
+                f'Detected possible presence of {provider} services or CDN '
+                f'(hosts: {hosts}; {len(hits)} fingerprint hits)'
+            )
     else:
-        notes.append('No obvious cloud/CDN indicators detected from HTTP fingerprints')
+        notes.append(
+            'No obvious cloud or CDN indicators were detected from HTTP headers or response body'
+        )
+
+    # --- Public storage / bucket patterns ---
     if buckets:
         reachable = [b for b in buckets if b.get('ok') and b.get('status')]
         if reachable:
-            notes.append(f'Potential public storage endpoints reachable: {len(reachable)} (check specifics in report)')
+            examples = ', '.join([b['url'] for b in reachable[:5]])
+            notes.append(
+                f'Potential public storage endpoints responded: {len(reachable)} '
+                f'(examples: {examples}; manual verification recommended)'
+            )
+    else:
+        notes.append(
+            'Public storage checks were not performed or returned no results'
+        )
+
+    # --- IP owner / ASN ---
     if ipowner and ipowner.get('ok') and ipowner.get('data'):
         data = ipowner['data']
-        org = data.get('org') or data.get('organization') or data.get('company') or ''
-        notes.append(f'IP owner/org: {org}')
+        org = (
+            data.get('org')
+            or data.get('organization')
+            or data.get('company')
+            or 'Unknown organization'
+        )
+        notes.append(f'IP owner / ASN organization identified as: {org}')
+    else:
+        notes.append(
+            'IP owner / ASN information could not be reliably determined '
+            '(blocked, rate-limited, or unavailable)'
+        )
+
     return notes
 
 def render_report(outpath, target, dns, rdns, http_resps, indicators, ipowner, buckets, notes):
@@ -236,16 +279,28 @@ def render_report(outpath, target, dns, rdns, http_resps, indicators, ipowner, b
             'error': resp.get('error')
         }
 
+    # --- Process buckets with inline notes/errors ---
+    if buckets:
+        bucket_lines = []
+        for b in buckets:
+            status = b.get('status') if b.get('status') is not None else 'N/A'
+            note = b.get('note') or ''
+            ok = '✓' if b.get('ok') else '✗'
+            bucket_lines.append(f"{ok} {b['url']} (status: {status}) {note}")
+        buckets_display = '\n'.join(bucket_lines)
+    else:
+        buckets_display = 'No public storage fingerprints responded'
+
     html = HTML_TMPL.format(
         target=target,
         generated=generated_iso,
         ips=ips,
         dns=pformat(dns),
         rdns='\n'.join(rdns_display),
-        http=pformat(http_cleaned),
-        indicators=pformat(indicators),
-        ipowner=pformat(ipowner),
-        buckets=pformat(buckets),
+        http=pformat(http_cleaned) if http_cleaned else 'No HTTP/TLS data collected',
+        indicators=pformat(indicators) if indicators else 'No cloud or CDN fingerprints detected',
+        ipowner=pformat(ipowner) if ipowner else 'IP owner / ASN lookup unavailable',
+        buckets=buckets_display,
         notes='\n'.join(f'<li>{n}</li>' for n in notes)
     )
 
@@ -258,7 +313,7 @@ def render_report(outpath, target, dns, rdns, http_resps, indicators, ipowner, b
 def main():
     import argparse, re, time
 
-    print("This tool is only for ethical and legal use!\n")
+    print("This tool is only for ethical and legal use.\n")
     p = argparse.ArgumentParser(description='Cloud Footprint Detector')
     p.add_argument('--target', help='Domain or IP to analyze (external footprint only)')
     p.add_argument('--out', default='cloud_footprint_report{generated}.html', help='HTML output path (can include {generated})')
@@ -314,6 +369,8 @@ def main():
             buckets = check_bucket_patterns(tgt, dns.get('A', []))
 
         notes = risk_notes(indicators, buckets, ipowner)
+        if not indicators and not buckets and not (ipowner and ipowner.get('ok') and ipowner.get('data')):
+            notes.append('No observable cloud/CDN, ASN, or public storage fingerprints detected. Target may be hardened or intentionally silent.')
 
         out = render_report(args.out, tgt, dns, rdns, http_resps, indicators, ipowner, buckets, notes)
         print(f'[+] Report written to: {out}')
@@ -324,7 +381,5 @@ def main():
 
     input("\nPress Enter to exit...")
 
-
 if __name__ == '__main__':
     main()
-
