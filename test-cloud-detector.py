@@ -1,20 +1,6 @@
 #!/usr/bin/env python3
 
 """
-Cloud Footprint CLI - Secuditor
-Single-file Python CLI that performs *external* cloud footprinting for a domain or IP
-and generates an HTML report. This is an **OSINT-style** tool that does NOT require
-credentials and does NOT attempt to access private cloud accounts.
-
-What it checks (best-effort):
- - DNS resolution (A, AAAA, CNAME)
- - Reverse DNS
- - HTTP/S headers and body hints for cloud/CDN providers (CloudFront, S3, Azure Blob, Azure CDN, Google Cloud Storage, Fastly, Akamai, Cloudflare, etc.)
- - IP owner / ASN using public IP geolocation APIs (ip-api.com, ipinfo.io fallback)
- - Attempts to detect public storage buckets using common URL patterns
- - Checks common cloud-managed services fingerprints (e.g., S3 URL patterns, azureblob, storage.googleapis)
- - Produces an HTML report with findings and remediation/notes
-
 Usage:
   python3 cloud_footprint_cli.py --target example.com --out cloud_report.html
 
@@ -341,3 +327,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
