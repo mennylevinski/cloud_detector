@@ -1,5 +1,5 @@
 # Cloud Detector
-A cross-platform diagnostic cloud infrastructure scanner for ethical pentesting and security awareness.
+A cross-platform diagnostic cloud infrastructure scanner for **Ethical Pentesting** and **Security Awareness**.
 
 ---
 
