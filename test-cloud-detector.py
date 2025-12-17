@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
 
 """
-Usage:
-  python3 cloud_footprint_cli.py --target example.com --out cloud_report.html
-
-Optional libs: requests
-  pip install requests
-
 This tool is intentionally conservative and respects legal/ethical boundaries.
 Do not use it to probe systems you don't have permission to investigate.
 """
@@ -383,3 +377,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
