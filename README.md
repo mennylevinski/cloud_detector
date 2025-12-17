@@ -11,7 +11,7 @@ This tool is intended solely for lawful and authorized use. You must obtain expl
 ## ☁️ What it does:
 - DNS resolution (A, AAAA, CNAME)
 - Reverse DNS
-- HTTP/S headers and body hints for cloud/CDN providers (AWS S3, Azure Blob, Azure CDN, Google Cloud, Fastly, Akamai, Cloudflare, etc.)
+- HTTP/S headers and body hints for cloud/CDN providers (AWS, Azure Blob, Azure CDN, Google Cloud, Fastly, Akamai, Cloudflare, etc.)
 - IP owner / ASN using public IP geolocation APIs (ip-api.com, ipinfo.io fallback)
 - Attempts to detect public storage buckets using common URL patterns
 - Checks common cloud-managed services fingerprints (e.g., S3 URL patterns, azureblob, storage.googleapis)
