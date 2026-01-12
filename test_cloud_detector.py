@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
 """
 This tool is intentionally conservative and respects legal/ethical boundaries.
@@ -377,4 +378,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
