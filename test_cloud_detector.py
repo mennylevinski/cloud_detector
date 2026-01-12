@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
+Author: Menny Levinski
+
 This tool is intentionally conservative and respects legal/ethical boundaries.
 Do not use it to probe systems you don't have permission to investigate.
 """
